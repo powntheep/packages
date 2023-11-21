@@ -3,11 +3,13 @@
 // found in the LICENSE file.
 
 import 'dart:async';
-import 'dart:html' as html;
+import 'dart:js_interop';
+// import 'dart:html' as html;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player_platform_interface/video_player_platform_interface.dart';
+import 'package:web/helpers.dart';
 
 import 'duration_utils.dart';
 
@@ -38,14 +40,14 @@ const String _kDefaultErrorMessage =
 class VideoPlayer {
   /// Create a [VideoPlayer] from a [html.VideoElement] instance.
   VideoPlayer({
-    required html.VideoElement videoElement,
+    required VideoElement videoElement,
     @visibleForTesting StreamController<VideoEvent>? eventController,
   })  : _videoElement = videoElement,
         _eventController = eventController ?? StreamController<VideoEvent>();
 
   final StreamController<VideoEvent> _eventController;
-  final html.VideoElement _videoElement;
-  void Function(html.Event)? _onContextMenu;
+  final VideoElement _videoElement;
+  void Function(Event)? _onContextMenu;
 
   bool _isInitialized = false;
   bool _isBuffering = false;
@@ -78,7 +80,7 @@ class VideoPlayer {
     // This property is not exposed through dart:html so we use the
     // HTML Boolean attribute form (when present with any value => true)
     // See: https://developer.mozilla.org/en-US/docs/Glossary/Boolean/HTML
-    _videoElement.setAttribute('playsinline', true);
+    _videoElement.setAttribute('playsinline', 'true');
 
     _videoElement.onCanPlay.listen(_onVideoElementInitialization);
     // Needed for Safari iOS 17, which may not send `canplay`.
@@ -98,12 +100,12 @@ class VideoPlayer {
     });
 
     // The error event fires when some form of error occurs while attempting to load or perform the media.
-    _videoElement.onError.listen((html.Event _) {
+    _videoElement.onError.listen((Event _) {
       setBuffering(false);
       // The Event itself (_) doesn't contain info about the actual error.
       // We need to look at the HTMLMediaElement.error.
       // See: https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/error
-      final html.MediaError error = _videoElement.error!;
+      final MediaError error = _videoElement.error!;
       _eventController.addError(PlatformException(
         code: _kErrorValueToErrorName[error.code]!,
         message: error.message != '' ? error.message : _kDefaultErrorMessage,
@@ -145,18 +147,18 @@ class VideoPlayer {
   /// When called from some user interaction (a tap on a button), the above
   /// limitation should disappear.
   Future<void> play() {
-    return _videoElement.play().catchError((Object e) {
+    return _videoElement.play().toDart.catchError((Object e) {
       // play() attempts to begin playback of the media. It returns
       // a Promise which can get rejected in case of failure to begin
       // playback for any reason, such as permission issues.
       // The rejection handler is called with a DomException.
       // See: https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/play
-      final html.DomException exception = e as html.DomException;
+      final DOMException exception = e as DOMException;
       _eventController.addError(PlatformException(
         code: exception.name,
         message: exception.message,
       ));
-    }, test: (Object e) => e is html.DomException);
+    }, test: (Object e) => e is DOMException);
   }
 
   /// Pauses the video in the current position.
@@ -230,17 +232,21 @@ class VideoPlayer {
       }
 
       if (!options.controls.allowPictureInPicture) {
-        _videoElement.setAttribute('disablePictureInPicture', true);
+        _videoElement.setAttribute('disablePictureInPicture', 'true');
       }
     }
 
     if (!options.allowContextMenu) {
-      _onContextMenu = (html.Event event) => event.preventDefault();
-      _videoElement.addEventListener('contextmenu', _onContextMenu);
+      _onContextMenu = (Event event) => event.preventDefault();
+      _videoElement.addEventListener(
+          'contextmenu',
+          (Event event) {
+            _onContextMenu!(event);
+          }.toJS);
     }
 
     if (!options.allowRemotePlayback) {
-      _videoElement.setAttribute('disableRemotePlayback', true);
+      _videoElement.setAttribute('disableRemotePlayback', 'true');
     }
   }
 
@@ -249,7 +255,11 @@ class VideoPlayer {
     _videoElement.removeAttribute('controlsList');
     _videoElement.removeAttribute('disablePictureInPicture');
     if (_onContextMenu != null) {
-      _videoElement.removeEventListener('contextmenu', _onContextMenu);
+      _videoElement.removeEventListener(
+          'contextmenu',
+          (Event event) {
+            _onContextMenu!(event);
+          }.toJS);
       _onContextMenu = null;
     }
     _videoElement.removeAttribute('disableRemotePlayback');
@@ -259,7 +269,11 @@ class VideoPlayer {
   void dispose() {
     _videoElement.removeAttribute('src');
     if (_onContextMenu != null) {
-      _videoElement.removeEventListener('contextmenu', _onContextMenu);
+      _videoElement.removeEventListener(
+          'contextmenu',
+          (Event event) {
+            _onContextMenu!(event);
+          }.toJS);
       _onContextMenu = null;
     }
     _videoElement.load();
@@ -325,7 +339,7 @@ class VideoPlayer {
   }
 
   // Converts from [html.TimeRanges] to our own List<DurationRange>.
-  List<DurationRange> _toDurationRange(html.TimeRanges buffered) {
+  List<DurationRange> _toDurationRange(TimeRanges buffered) {
     final List<DurationRange> durationRange = <DurationRange>[];
     for (int i = 0; i < buffered.length; i++) {
       durationRange.add(DurationRange(
