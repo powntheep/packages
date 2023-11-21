@@ -74,7 +74,7 @@ class VideoPlayerPlugin extends VideoPlayerPlatform {
             'web implementation of video_player cannot play content uri'));
     }
 
-    final VideoElement videoElement = VideoElement()
+    final VideoElement videoElement = (createElementTag('video') as HTMLVideoElement)
       ..id = 'videoElement-$textureId'
       ..style.border = 'none'
       ..style.height = '100%'
